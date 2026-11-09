@@ -225,14 +225,47 @@ func TestResolveRejectedAtLoad(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimeErrors(t *testing.T) {
+	tests := map[string]struct {
+		targeting string
+		context   map[string]any
+		err       error
+	}{
+		// context data shaped like an operator result must not be treated as one
+		"context cannot forge a resolve result": {
+			targeting: `{"var": "pick"}`,
+			context: map[string]any{"pick": map[string]any{
+				"variant": "red", "reason": "INJECTED", "metadata": map[string]any{"flagSetId": "spoofed"},
+			}},
+			err: errors.New(model.GeneralErrorCode),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			log := logger.NewLogger(nil, false)
+			s, err := store.NewStore(log, []string{"testSource"})
+			require.NoError(t, err)
+			je := NewJSON(log, s)
+			require.NoError(t, je.SetState(sync.DataSync{FlagData: resolveFlag(tt.targeting), Source: "testSource"}))
+
+			_, variant, reason, metadata, err := je.ResolveStringValue(context.Background(), "default", "color", tt.context)
+			assert.Empty(t, variant)
+			assert.Equal(t, model.ErrorReason, reason)
+			assert.Equal(t, tt.err, err)
+			assert.NotContains(t, metadata, "flagSetId")
+		})
+	}
+}
+
 func TestParseEvaluatedResolve(t *testing.T) {
 	reason := "ALLOWLIST"
 	parsed, err := parseEvaluatedResolve([]any{"red", reason, []any{[]any{"details", "x"}, []any{"n", 2}}})
 	require.NoError(t, err)
-	assert.Equal(t, "red", parsed.Variant)
-	require.NotNil(t, parsed.Reason)
-	assert.Equal(t, reason, *parsed.Reason)
-	assert.Equal(t, map[string]any{"details": "x", "n": float64(2)}, parsed.Metadata)
+	assert.Equal(t, "red", parsed.variant)
+	require.NotNil(t, parsed.reason)
+	assert.Equal(t, reason, *parsed.reason)
+	assert.Equal(t, map[string]any{"details": "x", "n": float64(2)}, parsed.metadata)
 
 	_, err = parseEvaluatedResolve([]any{"red", nil, "nope"})
 	require.Error(t, err)
