@@ -12,6 +12,11 @@ import (
 
 const ResolveEvaluationName = "resolve"
 
+// reservedResolveReasons drive flagd's own control flow (zero value, disabled, error), so a rule may not set them
+var reservedResolveReasons = map[string]struct{}{
+	model.FallbackReason: {}, model.DisabledReason: {}, model.ErrorReason: {},
+}
+
 // resolveResult is what the operator returns. JsonLogic passes it through if/?: untouched (it only
 // re-applies maps), and since no JSON input decodes to it, context data cannot forge one.
 // A nil reason keeps TARGETING_MATCH. err is set when evaluated arguments are malformed.
@@ -61,6 +66,9 @@ func parseEvaluatedResolve(values any) (*resolveResult, error) {
 		if !ok {
 			return nil, errors.New("resolve reason must be a string or null")
 		}
+		if err := checkReasonNotReserved(reason); err != nil {
+			return nil, err
+		}
 		parsed.reason = &reason
 	}
 
@@ -72,6 +80,13 @@ func parseEvaluatedResolve(values any) (*resolveResult, error) {
 		parsed.metadata = metadata
 	}
 	return parsed, nil
+}
+
+func checkReasonNotReserved(reason string) error {
+	if _, reserved := reservedResolveReasons[reason]; reserved {
+		return fmt.Errorf("resolve reason %q is reserved by flagd", reason)
+	}
+	return nil
 }
 
 func parseEvaluatedMetadata(value any) (map[string]any, error) {
@@ -277,7 +292,10 @@ func validateResolveReason(node any, flagKey string) error {
 	if isJSONLogicRule(node) {
 		return walkResolve(node, false, flagKey)
 	}
-	if _, ok := node.(string); ok {
+	if reason, ok := node.(string); ok {
+		if err := checkReasonNotReserved(reason); err != nil {
+			return fmt.Errorf("flag %q: %w", flagKey, err)
+		}
 		return nil
 	}
 	return fmt.Errorf("flag %q: resolve reason must be a string or null", flagKey)

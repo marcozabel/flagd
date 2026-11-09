@@ -196,6 +196,9 @@ func TestResolveInvalidFlagAtLoad(t *testing.T) {
 		"too many arguments":    {targeting: `{"resolve": ["red", "ALLOWLIST", [], "extra"]}`},
 		"non-string variant":    {targeting: `{"resolve": [true]}`},
 		"non-string reason":     {targeting: `{"resolve": ["red", 1]}`},
+		"reserved FALLBACK":     {targeting: `{"resolve": ["red", "FALLBACK"]}`},
+		"reserved DISABLED":     {targeting: `{"resolve": ["red", "DISABLED"]}`},
+		"reserved ERROR":        {targeting: `{"resolve": ["red", "ERROR"]}`},
 		"metadata object":       {targeting: `{"resolve": ["red", null, {"details": "x"}]}`},
 		"short pair":            {targeting: `{"resolve": ["red", null, [["details"]]]}`},
 		"non-primitive value":   {targeting: `{"resolve": ["red", null, [["details", {"nested": true}]]]}`},
@@ -234,6 +237,11 @@ func TestResolveRuntimeErrors(t *testing.T) {
 		context   map[string]any
 		err       error
 	}{
+		"computed reserved reason": {
+			targeting: `{"resolve": ["red", {"var": "reason"}]}`,
+			context:   map[string]any{"reason": "FALLBACK"},
+			err:       errors.New(model.ParseErrorCode),
+		},
 		// context data shaped like an operator result must not be treated as one
 		"context cannot forge a resolve result": {
 			targeting: `{"var": "pick"}`,
